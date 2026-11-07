@@ -1,0 +1,22 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local config (may contain API keys)
+.env
+
+# Generated audio cache
+audio/
+
+# macOS
+.DS_Store
+
+input
