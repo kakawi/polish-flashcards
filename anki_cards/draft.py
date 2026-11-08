@@ -1,15 +1,20 @@
-"""Draft a deck file from a plain list: one front per line, machine-translated.
+"""Draft a deck file from a plain list: one front per line, a back may
+follow a tab.
 
     dom
-    Dzień dobry!<TAB>Добрый день!    (own translation after a tab)
+    Co jesz na śniadanie?<TAB>Jem jajka.
 
-becomes
+becomes (with --translate ru)
     {"id": "house", "front": "dom", "back": "дом"}
-    {"id": "good-afternoon", "front": "Dzień dobry!", "back": "Добрый день!"}
+    {"id": "what-do-you-eat-for-breakfast", "front": "Co jesz na śniadanie?",
+     "back": "Jem jajka."}
 
-Ids are always English (the front translated to English), so they stay
-readable whatever the deck's languages are. Review the file, fix what the
-translator got wrong, then import it.
+Backs are machine-translated only with --translate, and only where the line
+has none; otherwise they are left empty for you to fill in (import rejects
+empty backs). Ids are always English (the front translated to English), so
+they stay readable whatever the deck's languages are. --front-audio and
+--back-audio are written into the deck's settings as given; the audio itself
+is made by import.
 """
 import json
 import logging
@@ -21,6 +26,7 @@ from .config import Settings
 from .deckfile import norm
 from .errors import ProviderError
 from .services import Translator
+from .services.tts import resolve_voice
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +37,7 @@ def slug(text: str) -> str:
     """'Good afternoon, how are you?' -> 'good-afternoon-how-are-you'."""
     ascii_text = (unicodedata.normalize("NFKD", text.replace("ł", "l").replace("Ł", "L"))
                   .encode("ascii", "ignore").decode())
+    ascii_text = re.sub(r"['’]", "", ascii_text)  # what's -> whats
     s = re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")
     if len(s) > ID_MAX:  # cut at a word boundary
         s = s[:ID_MAX].rsplit("-", 1)[0]
@@ -70,8 +77,27 @@ def dump(settings: dict, cards: list) -> str:
             f'  "cards": [\n{body}\n  ]\n}}\n')
 
 
-def draft(settings: Settings, src: Path, out: Path, source: str, target: str,
-          back_audio: bool, note_type: str):
+def check_audio(value, option: str):
+    """Fail now rather than at import if the audio value has no voice."""
+    if value is not None:
+        try:
+            resolve_voice(value)
+        except KeyError:
+            raise SystemExit(f"{option} {value}: no default voice for this "
+                             "language; give a voice name, e.g. "
+                             "cs-CZ-VlastaNeural (edge-tts --list-voices)")
+
+
+def draft(settings: Settings, src: Path, out: Path, lang: str, translate_to,
+          front_audio, back_audio, note_type: str):
+    check_audio(front_audio, "--front-audio")
+    check_audio(back_audio, "--back-audio")
+    lang = lang.lower()
+    target = translate_to.lower() if translate_to else None
+    if target == lang:
+        raise SystemExit(f"--translate {target} is the language of the fronts "
+                         "(--lang); leave --translate out to write the backs "
+                         "yourself")
     if out.exists():
         raise SystemExit(f"{out} already exists; pick another name with -o "
                          "or delete it first")
@@ -79,9 +105,11 @@ def draft(settings: Settings, src: Path, out: Path, source: str, target: str,
     if not entries:
         raise SystemExit(f"{src}: no lines to draft")
 
-    to_target = Translator(settings, source, target)
-    to_english = (to_target if target == "en"
-                  else Translator(settings, source, "en"))
+    # only the translators that are needed; none for English fronts
+    to_target = Translator(settings, lang, target) if target else None
+    to_english = (None if lang == "en" else
+                  to_target if target == "en" else
+                  Translator(settings, lang, "en"))
 
     def translate(t, text):
         try:
@@ -94,21 +122,27 @@ def draft(settings: Settings, src: Path, out: Path, source: str, target: str,
 
     cards, taken = [], set()
     for n, (front, back) in enumerate(entries, start=1):
-        back = back or translate(to_target, front)
-        english = back if target == "en" and back else translate(to_english, front)
+        own_back = bool(back)
+        if not back and to_target:
+            back = translate(to_target, front)
+        if to_english is None:
+            english = front
+        elif target == "en" and back:
+            english = back
+        else:
+            english = translate(to_english, front)
         card = {"id": unique(slug(english or front), taken),
                 "front": front, "back": back}
         if not back:
-            log.warning("- %s: no translation; fill in \"back\" before "
-                        "importing", front)
-        elif back.casefold() == front.casefold():
+            log.warning("- %s: no %s; fill in \"back\" before importing",
+                        front, "translation" if to_target else "back after a tab")
+        elif not own_back and back.casefold() == front.casefold():
             log.warning("- %s: translation is identical to the front; "
                         "check it", front)
         log.info("[%d/%d] %s: %s -> %s", n, len(entries), card["id"], front, back)
         cards.append(card)
 
-    deck_settings = {"front_audio": source,
-                     "back_audio": target if back_audio else None,
+    deck_settings = {"front_audio": front_audio, "back_audio": back_audio,
                      "note_type": note_type}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(dump(deck_settings, cards), encoding="utf-8")

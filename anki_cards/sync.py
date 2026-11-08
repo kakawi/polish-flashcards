@@ -183,6 +183,10 @@ class Sync:
                 continue
             side = name.lower()
             path = self.audio.get(deck, card.id, side, text, voice)
+            if path is None:
+                log.warning("! %s: %s %r has nothing to say aloud, no audio",
+                            card.id, side, text)
+                continue
             digests[name] = self.audio.digest(path)
             audio.append({
                 "path": str(path.resolve()),

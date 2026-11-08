@@ -31,6 +31,15 @@ DEFAULT_VOICES = {
 }
 
 
+# Not read out: an ellipsis (... or …) and !. They stay on the card.
+NOT_SPOKEN = re.compile(r"\.{2,}|…|!")
+
+
+def spoken(text: str) -> str:
+    """The text as sent to TTS: 'No cóż... dobrze!' -> 'No cóż dobrze'."""
+    return " ".join(NOT_SPOKEN.sub(" ", text).split())
+
+
 def safe_name(text: str) -> str:
     """'Co jesz na śniadanie?' -> 'Co_jesz_na_śniadanie': characters that
     file systems or Anki's media folder reject become _, the length is
@@ -97,8 +106,12 @@ class AudioService:
         return self._manifests[folder]
 
     def get(self, deck: str, card_id: str, side: str, text: str,
-            voice: str) -> Path:
-        """Path to the mp3 for one side of a card, generating it if needed."""
+            voice: str):
+        """Path to the mp3 for one side of a card, generating it if needed.
+        None if nothing is left to say once punctuation is dropped."""
+        text = spoken(text)
+        if not text:
+            return None
         path = self.path(deck, card_id, side)
         made = self.manifest(path.parent)
         if path.exists():

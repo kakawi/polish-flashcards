@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anki-cards"
+version = "0.1.0"
+description = "Keep Anki decks in sync with JSON files, with text-to-speech audio"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "requests",
+    "edge-tts",
+    "deep-translator",
+    "python-dotenv",
+]
+
+[project.scripts]
+anki-cards = "anki_cards.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["anki_cards*"]

@@ -62,22 +62,25 @@ def parse_args(settings: Settings):
     s.add_argument("-y", "--yes", action="store_true",
                    help="with --force, do not ask for confirmation")
 
-    d = sub.add_parser("draft", help="make a deck file from a plain list, "
-                                     "machine-translated",
+    d = sub.add_parser("draft", help="make a deck file from a plain list",
                        description="Make a deck file from a text file with one "
-                                   "front per line (an own translation may "
-                                   "follow a tab). Ids are generated in English.")
+                                   "front per line; a back may follow a tab. "
+                                   "Ids are generated in English. No audio is "
+                                   "made here: import makes it.")
     d.add_argument("src", type=Path, help="text file, one front per line")
     d.add_argument("-o", "--output", type=Path, default=None,
                    help="deck file to write (default: INPUT_DIR/<src name>.json)")
-    d.add_argument("--from", dest="source", default="pl",
-                   help="language of the fronts, also used for front audio "
-                        "(default: %(default)s)")
-    d.add_argument("--to", dest="target", default="ru",
-                   help="language to translate the backs into "
-                        "(default: %(default)s)")
-    d.add_argument("--back-audio", action="store_true",
-                   help="make audio for the back too, in the --to language")
+    d.add_argument("--lang", default="pl",
+                   help="language of the fronts: translated from, and used "
+                        "for the English ids (default: %(default)s)")
+    d.add_argument("--translate", metavar="LANG", default=None,
+                   help="translate backs that the file doesn't give into "
+                        "LANG; without it, they are left empty to fill in")
+    d.add_argument("--front-audio", metavar="AUDIO", default=None,
+                   help="front audio setting: a language code (pl) or a voice "
+                        "(pl-PL-MarekNeural); default: none")
+    d.add_argument("--back-audio", metavar="AUDIO", default=None,
+                   help="back audio setting, like --front-audio; default: none")
     d.add_argument("--note-type", default="Basic (and reversed card)",
                    help="note type for the deck (default: %(default)s)")
 
@@ -95,8 +98,8 @@ def main():
 
     if args.command == "draft":
         out = args.output or settings.input_dir / f"{args.src.stem}.json"
-        draft(settings, args.src, out, args.source, args.target,
-              args.back_audio, args.note_type)
+        draft(settings, args.src, out, args.lang, args.translate,
+              args.front_audio, args.back_audio, args.note_type)
         return
 
     files = find_input_files(args.input)

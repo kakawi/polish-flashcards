@@ -10,10 +10,10 @@ Keep Anki decks in sync with JSON files, with text-to-speech audio, using the
 - **The file is the source of truth:** new cards are added, changed cards are
   updated in place (your study progress is kept), unchanged cards are left
   alone, and cards removed from the file are deleted.
-- **`draft`** turns a plain word list into a deck file using machine
+- **`draft`** turns a plain list into a deck file, optionally with machine
   translation ([MyMemory](https://mymemory.translated.net/) via
   [deep-translator](https://github.com/nidhaloff/deep-translator)), so you
-  can review the translations before they reach Anki.
+  can review everything before it reaches Anki.
 
 ## Requirements
 
@@ -34,13 +34,12 @@ cp .env.example .env
 ## Usage
 
 ```bash
-# 1. a word list -> a deck file, translated (one front per line)
-anki-cards draft words.txt                 # writes input/words.json
-anki-cards draft words.txt --to en --back-audio -o "input/Food.json"
+# 1. a list (one front per line) -> a deck file you review
+anki-cards draft words.txt --translate ru --front-audio pl    # writes input/words.json
 
-# 2. review/fix input/*.json, then sync every deck file into Anki
+# 2. sync every deck file into Anki (this is where audio is made)
 anki-cards import
-anki-cards import -i "input/Food.json"     # a single file
+anki-cards import -i "input/words.json"                     # a single file
 ```
 
 ### `import`
@@ -54,19 +53,52 @@ anki-cards import -i "input/Food.json"     # a single file
 
 ### `draft`
 
+Turns a plain list into a deck file. Each line is a front, optionally
+followed by a tab and its back:
+
+```
+pies
+Co jesz na śniadanie?<TAB>Na śniadanie jem jajka.
+```
+
 | Flag | Meaning |
 |------|---------|
-| `src` | Text file, one front per line. Your own translation may follow a tab |
+| `src` | The list |
 | `-o`, `--output` | Deck file to write (default `INPUT_DIR/<src name>.json`); an existing file is never overwritten |
-| `--from` | Language of the fronts, also used for front audio (default `pl`) |
-| `--to` | Language of the backs (default `ru`) |
-| `--back-audio` | Also make audio for the backs, in the `--to` language |
+| `--lang` | Language of the fronts (default `pl`): what `--translate` translates from, and what the ids are made from |
+| `--translate LANG` | Machine-translate the backs into `LANG`, for lines without a back. Without it nothing is translated |
+| `--front-audio AUDIO` | Written as `front_audio` in the deck's settings: a language code (`pl`) or a voice (`pl-PL-MarekNeural`). Default: no audio |
+| `--back-audio AUDIO` | The same for `back_audio` |
 | `--note-type` | Note type for the deck (default `Basic (and reversed card)`) |
 
+`draft` doesn't make audio: the audio options only go into the file's
+`settings`, which you can still change before importing. `import` makes the
+audio.
+
+A line without a back, when `--translate` is not given (or the translation
+fails), gets `"back": ""` and a warning. `import` rejects the file until you
+fill it in, so you can also list only the fronts and write the backs in the
+JSON.
+
 Each card's `id` is made from the front's **English** translation
-(`pies` → `dog`), so ids stay readable whatever the
-languages. Lines that couldn't be translated get an empty `back`, which
-`import` rejects until you fill it in.
+(`pies` → `dog`, `What's your name?` → `whats-your-name`), so ids stay
+readable whatever the languages. With `--lang en` the front itself is used.
+
+Examples:
+
+```bash
+# Polish -> Russian vocabulary, Polish audio on the front
+anki-cards draft words.txt --translate ru --front-audio pl
+
+# also Russian audio on the back, with a specific voice
+anki-cards draft words.txt --translate ru --front-audio pl --back-audio ru-RU-DmitryNeural
+
+# Polish questions and answers (backs after a tab), audio on both sides
+anki-cards draft qa.txt --front-audio pl --back-audio pl --note-type Basic
+
+# English fronts, translated to Polish
+anki-cards draft words.txt --lang en --translate pl --front-audio en
+```
 
 ## Deck files
 
@@ -145,6 +177,9 @@ In Anki's media folder, which all decks share, the file is called
 
 - An existing file is used as it is, so you can put audio from anywhere else
   under that name. Only missing files are generated.
+- Ellipses (`...`, `…`) and `!` are not sent to the voice: `No cóż... dobrze!`
+  is read as `No cóż dobrze`. They stay on the card. A side that is only
+  punctuation gets no audio.
 - Generated files are recorded in the deck folder's `.generated.json`, with
   their text and voice. When a card's text or voice changes, its generated
   file is made again. A file you put there yourself is never overwritten.
