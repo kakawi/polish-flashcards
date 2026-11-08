@@ -1,21 +1,13 @@
-"""Machine translation through deep-translator (Google, MyMemory or DeepL)."""
+"""Machine translation with MyMemory, through deep-translator."""
 import logging
-import re
 import time
 
-import requests
-from deep_translator import DeeplTranslator, GoogleTranslator, MyMemoryTranslator
+from deep_translator import MyMemoryTranslator
 from deep_translator.constants import MY_MEMORY_LANGUAGES_TO_CODES
-from deep_translator.exceptions import (
-    ApiKeyException,
-    AuthorizationException,
-    TooManyRequests,
-)
+from deep_translator.exceptions import TooManyRequests
 
 from ..config import Settings
 from ..errors import ProviderError
-
-GOOGLE_URL = "https://translate.google.com/m"  # endpoint deep-translator uses
 
 log = logging.getLogger(__name__)
 
@@ -31,44 +23,26 @@ def mymemory_code(lang: str) -> str:
 
 
 class Translator:
-    """Translate source-language text, with retries on rate limits.
+    """Translate text from one language to another, with retries on rate
+    limits.
 
-    Raises ProviderError for problems that will hit every request (rate
-    limit after all retries, rejected API key); any other exception is about
-    the single text.
+    Raises ProviderError when MyMemory keeps rate-limiting us (e.g. the daily
+    quota is used up), which would hit every request; any other exception is
+    about the single text.
     """
 
-    def __init__(self, settings: Settings):
-        self.provider = settings.translator
-        self.source = settings.source_lang
-        self.target = settings.target_lang
+    def __init__(self, settings: Settings, source: str, target: str):
+        self.source = source
+        self.target = target
         self.delay = settings.request_delay
-        self._impl = self._build(settings)  # fail fast on bad config
-
-    def _build(self, s: Settings):
-        if self.provider == "google":
-            return GoogleTranslator(source=s.source_lang, target=s.target_lang)
-        if self.provider == "mymemory":
-            return MyMemoryTranslator(
-                source=mymemory_code(s.source_lang),
-                target=mymemory_code(s.target_lang),
-                email=s.mymemory_email,
-            )
-        if self.provider == "deepl":
-            if not s.deepl_api_key:
-                raise SystemExit("TRANSLATOR=deepl needs DEEPL_API_KEY in .env")
-            return DeeplTranslator(
-                api_key=s.deepl_api_key,
-                source=s.source_lang,
-                target=s.target_lang,
-                use_free_api=s.deepl_free,
-            )
-        raise SystemExit(
-            f"Unknown TRANSLATOR {self.provider!r} (use google, mymemory or deepl)"
+        self._impl = MyMemoryTranslator(  # fails fast on unknown languages
+            source=mymemory_code(source),
+            target=mymemory_code(target),
+            email=settings.mymemory_email,
         )
 
     def translate(self, text: str, retries: int = 4) -> str:
-        """Translate with exponential backoff when the provider rate-limits us."""
+        """Translate with exponential backoff when MyMemory rate-limits us."""
         wait = 5
         for attempt in range(1, retries + 1):
             start = time.monotonic()
@@ -78,26 +52,16 @@ class Translator:
                           time.monotonic() - start)
                 time.sleep(self.delay)
                 return result
-            except (AuthorizationException, ApiKeyException) as e:
-                raise ProviderError(f"{self.provider} rejected the API key: {e!r}")
             except TooManyRequests as e:
                 log.warning(
-                    "translate: HTTP 429 from %s (attempt %d/%d, %.2fs): %r",
-                    self.provider, attempt, retries, time.monotonic() - start, e,
+                    "translate: HTTP 429 from MyMemory (attempt %d/%d, %.2fs): %r",
+                    attempt, retries, time.monotonic() - start, e,
                 )
-                if attempt == 1 and self.provider == "google":
-                    log.warning("Probing Google to see why we are blocked...")
-                    if "unusual traffic" in self.probe_google(text).lower():
-                        raise ProviderError(
-                            "Google is showing a CAPTCHA ('unusual traffic') for "
-                            "your network/IP. Waiting and retrying will not help. "
-                            "Set TRANSLATOR=mymemory or TRANSLATOR=deepl in .env, "
-                            "or try later / from another network."
-                        )
                 if attempt == retries:
                     raise ProviderError(
-                        f"{self.provider} is rate-limiting this connection. Run "
-                        "again later, or switch TRANSLATOR in .env. Run with -v "
+                        "MyMemory is rate-limiting this connection (its daily "
+                        "quota may be used up). Run again later, or set "
+                        "MYMEMORY_EMAIL in .env for a larger quota. Run with -v "
                         "for details."
                     )
                 log.warning("waiting %ds before retrying", wait)
@@ -105,11 +69,8 @@ class Translator:
                 wait *= 2
 
     def _fetch(self, text: str) -> str:
-        """One translation request. For MyMemory, inspect all candidate answers:
-        its top answer is often just the input echoed back."""
-        if self.provider != "mymemory":
-            return self._impl.translate(text)
-
+        """One translation request. Inspect all candidate answers: MyMemory's
+        top answer is often just the input echoed back."""
         results = self._impl.translate(text, return_all=True)
         log.debug("mymemory raw result: %.1500r", results)
         candidates = [r for r in results if isinstance(r, str)]
@@ -127,24 +88,3 @@ class Translator:
             if c.strip().casefold() != text.strip().casefold():
                 return c
         return candidates[0] if candidates else text
-
-    def probe_google(self, text: str = "dom") -> str:
-        """Send one request exactly like deep-translator does and log the raw
-        reply. Returns the visible text of the response ("" if it failed)."""
-        params = {"tl": self.target, "sl": self.source, "q": text}
-        start = time.monotonic()
-        try:
-            r = requests.get(GOOGLE_URL, params=params, timeout=15)
-        except requests.RequestException as e:
-            log.error("probe: request failed: %r", e)
-            return ""
-        log.info("probe: HTTP %s in %.2fs (%s)", r.status_code,
-                 time.monotonic() - start, r.url)
-        for h in ("Retry-After", "Content-Type", "Server", "Via"):
-            if h in r.headers:
-                log.info("probe: header %s: %s", h, r.headers[h])
-        body = re.sub(r"(?is)<(script|style).*?</\1>", " ", r.text)
-        body = re.sub(r"<[^>]+>", " ", body)
-        body = re.sub(r"\s+", " ", body).strip()
-        log.info("probe: body: %s", body[:400])
-        return body

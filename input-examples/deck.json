@@ -1,0 +1,9 @@
+{
+  "settings": {"front_audio": "pl", "back_audio": null, "note_type": "Basic (and reversed card)"},
+  "cards": [
+    {"id": "house", "front": "dom", "back": "дом"},
+    {"id": "cat", "front": "kot", "back": "кот"},
+    {"id": "breakfast", "front": "Co jesz na śniadanie?", "back": "Na śniadanie jem jajka i chleb.", "back_audio": "pl", "note_type": "Basic"},
+    {"id": "name", "front": "Jak masz na imię?", "back": "Mam na imię Anna.", "back_audio": "pl", "note_type": "Basic"}
+  ]
+}

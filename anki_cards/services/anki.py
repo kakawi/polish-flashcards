@@ -60,25 +60,28 @@ class AnkiClient:
     def card_count(self, deck: str) -> int:
         return len(self.invoke("findCards", query=f'"deck:{escape(deck)}"'))
 
-    def note_exists(self, deck: str, note_type: str, field: str, text: str) -> bool:
-        """True if a note in the deck has this text in the given field.
+    def deck_notes(self, deck: str) -> list:
+        """notesInfo for every note directly in the deck (not its subdecks)."""
+        d = escape(deck)
+        ids = self.invoke("findNotes", query=f'"deck:{d}" -"deck:{d}::*"')
+        return self.invoke("notesInfo", notes=ids) if ids else []
 
-        We search the deck ourselves instead of relying on Anki's duplicate
-        rule, because the stored field also contains a [sound:...] tag.
-        """
-        query = (
-            f'"deck:{escape(deck)}" "note:{escape(note_type)}" '
-            f'"{escape(field)}:{escape(html.escape(text))}*"'
-        )
-        ids = self.invoke("findNotes", query=query)
-        log.debug("existing-note search %s -> %d candidate(s)", query, len(ids))
-        if not ids:
-            return False
-        wanted = text.strip().casefold()
-        return any(
-            plain(info["fields"][field]["value"]) == wanted
-            for info in self.invoke("notesInfo", notes=ids)
-        )
+    def update_note(self, note_id: int, fields: dict, audio: list):
+        """Replace the note's fields; audio [sound:] tags are appended again."""
+        self.invoke("updateNoteFields",
+                    note={"id": note_id, "fields": fields, "audio": audio})
+
+    def add_tags(self, note_ids: list, tags: list):
+        if note_ids and tags:
+            self.invoke("addTags", notes=note_ids, tags=" ".join(tags))
+
+    def remove_tags(self, note_ids: list, tags: list):
+        if note_ids and tags:
+            self.invoke("removeTags", notes=note_ids, tags=" ".join(tags))
+
+    def delete_notes(self, note_ids: list):
+        if note_ids:
+            self.invoke("deleteNotes", notes=note_ids)
 
     def add_note(self, note: dict):
         return self.invoke("addNote", note=note)

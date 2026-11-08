@@ -20,3 +20,8 @@ audio/
 .DS_Store
 
 input
+
+# Packaging
+*.egg-info/
+build/
+dist/

@@ -1,28 +1,25 @@
 # anki-cards
 
-Turn a folder of files into Anki decks with text-to-speech audio, using the
+Keep Anki decks in sync with JSON files, with text-to-speech audio, using the
 [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on.
 
-There are two modes:
-
-| Mode | Input | Front | Back |
-|------|-------|-------|------|
-| `vocab` | `.txt`, one word/sentence per line | text + audio | machine translation |
-| `qa` | `.json`, question/answer pairs | question + audio | answer + audio (no translation) |
-
 - **One file = one deck.** The file name (without extension) is the deck name,
-  and Unicode names work (`Nazwy Miesięcy.txt` → deck `Nazwy Miesięcy`).
-- Audio is generated with [edge-tts](https://github.com/rany2/edge-tts).
-- Translation (vocab only) uses Google Translate, MyMemory or DeepL via
-  [deep-translator](https://github.com/nidhaloff/deep-translator).
-- Defaults to Polish → Russian, but any language pair works via `.env`.
-- Decks that already exist in Anki are skipped.
+  and Unicode names work (`Nazwy Miesięcy.json` → deck `Nazwy Miesięcy`).
+- **Front and back audio per deck or per card**, in any language, generated
+  with [edge-tts](https://github.com/rany2/edge-tts).
+- **The file is the source of truth:** new cards are added, changed cards are
+  updated in place (your study progress is kept), unchanged cards are left
+  alone, and cards removed from the file are deleted.
+- **`draft`** turns a plain word list into a deck file using machine
+  translation ([MyMemory](https://mymemory.translated.net/) via
+  [deep-translator](https://github.com/nidhaloff/deep-translator)), so you
+  can review the translations before they reach Anki.
 
 ## Requirements
 
 - Python 3.9+
 - Anki desktop, running, with the AnkiConnect add-on (code `2055492159`)
-- Internet access (translation and TTS)
+- Internet access (TTS, and translation for `draft`)
 
 ## Install
 
@@ -30,76 +27,135 @@ There are two modes:
 git clone https://github.com/<you>/anki-cards.git
 cd anki-cards
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .                                    # installs the anki-cards command
 cp .env.example .env
 ```
 
 ## Usage
 
-Each mode reads its own folder: `input/vocab/` and `input/qa/`. Open Anki,
-then run:
-
 ```bash
-python -m anki_cards vocab                      # every .txt in input/vocab
-python -m anki_cards qa                         # every .json in input/qa
-python -m anki_cards qa -i "input/qa/Food.json" # a single file
-python -m anki_cards vocab --force              # delete + recreate existing decks (asks first)
-python -m anki_cards qa -v                      # verbose log
+# 1. a word list -> a deck file, translated (one front per line)
+anki-cards draft words.txt                 # writes input/words.json
+anki-cards draft words.txt --to en --back-audio -o "input/Food.json"
+
+# 2. review/fix input/*.json, then sync every deck file into Anki
+anki-cards import
+anki-cards import -i "input/Food.json"     # a single file
 ```
+
+### `import`
 
 | Flag | Meaning |
 |------|---------|
-| `-i`, `--input` | Folder with one file per deck, or a single file (default `input/<mode>`) |
-| `--force` | Delete decks that already exist and recreate them from their files. Asks for confirmation first |
-| `-y`, `--yes` | With `--force`, skip the confirmation prompt |
-| `--voice` | edge-tts voice for this run, overriding `TTS_VOICE` |
+| `-i`, `--input` | Folder with one `.json` file per deck, or a single file (default `INPUT_DIR`, i.e. `input`) |
+| `--force` | Delete existing decks (all cards, subdecks and study progress) and recreate them. Asks first |
+| `-y`, `--yes` | With `--force`, don't ask |
 | `-v`, `--verbose` | Debug logging |
 
-Hidden files (such as `.DS_Store`) and files with another extension are
-ignored.
+### `draft`
 
-### vocab: words and sentences
+| Flag | Meaning |
+|------|---------|
+| `src` | Text file, one front per line. Your own translation may follow a tab |
+| `-o`, `--output` | Deck file to write (default `INPUT_DIR/<src name>.json`); an existing file is never overwritten |
+| `--from` | Language of the fronts, also used for front audio (default `pl`) |
+| `--to` | Language of the backs (default `ru`) |
+| `--back-audio` | Also make audio for the backs, in the `--to` language |
+| `--note-type` | Note type for the deck (default `Basic (and reversed card)`) |
 
-One entry per line (see `examples/vocab.example.txt`). The card is
-*text + audio → translation*; with the default note type each note also gets a
-reversed card. To use your own translation for a line, add it after a tab:
+Each card's `id` is made from the front's **English** translation
+(`pies` → `dog`), so ids stay readable whatever the
+languages. Lines that couldn't be translated get an empty `back`, which
+`import` rejects until you fill it in.
 
-```
-Dzień dobry, jak się masz?<TAB>Добрый день, как дела?
-```
-
-### qa: questions and answers
-
-A JSON array of objects with `question` and `answer`, both in the source
-language (see `examples/qa.example.json`):
+## Deck files
 
 ```json
-[
-  {
-    "question": "Co jesz na śniadanie?",
-    "answer": "Na śniadanie jem jajka i chleb."
-  }
-]
+{
+  "settings": {"front_audio": "pl", "back_audio": null, "note_type": "Basic (and reversed card)"},
+  "cards": [
+    {"id": "house", "front": "dom", "back": "дом"},
+    {"id": "breakfast", "front": "Co jesz na śniadanie?", "back": "Jem jajka.",
+     "back_audio": "pl", "note_type": "Basic"}
+  ]
+}
 ```
 
-Nothing is translated. Both sides get audio, and cards are one-way (`Basic`
-note type). If the file is not valid JSON, or an item has no `question` or
-`answer`, the whole file is reported and skipped, so a deck is never built
-from half a file.
+See `input-examples/deck.json`.
 
-### Existing decks
+| Card key | |
+|----------|---|
+| `id` | Required. Letters, digits, `-`, `_`; unique in the file (ignoring case). Identifies the card in Anki, so the front can be reworded without losing progress. Don't change it |
+| `front`, `back` | Required, non-empty |
+| `front_audio`, `back_audio`, `note_type` | Optional, override `settings` for this card |
 
-If a deck with the file's name already exists in Anki (names are compared
-case-insensitively), the whole file is skipped. The deck is created only when
-its first card is ready, so a run that fails early leaves nothing behind.
+`settings` is required and must set all three keys:
 
-To rebuild a deck from its file, run with `--force`. This **deletes** the
-existing deck, including all its cards, any subdecks and your study progress
-for those cards, and creates it again. The script lists the decks and their
-card counts and waits for you to type `yes` (use `-y` to skip the prompt).
-If a run stops half-way (for example a translation rate limit), re-run with
-`--force` to rebuild the deck from scratch. Audio files in `audio/` are
-reused, so nothing is synthesized twice.
+| Setting | |
+|---------|---|
+| `front_audio` | `"pl"` (language code: its default voice), `"pl-PL-MarekNeural"` (exact voice) or `null` (no audio) |
+| `back_audio` | Same |
+| `note_type` | Anki note type with `Front` and `Back` fields |
+
+Language codes use these voices: `pl` Zofia, `ru` Svetlana, `uk` Polina,
+`en` Aria (US), `de` Katja, `es` Elvira, `fr` Denise, `it` Elsa. For another
+voice or language, give the full voice name (`edge-tts --list-voices`).
+
+A key missing on a card inherits the deck setting; `null` turns it off for
+that card. The whole file is rejected, before anything reaches Anki, if it
+has a missing field, a duplicate or invalid id, or an unknown key (so a typo
+like `back_adio` doesn't silently drop audio).
+
+### How sync works
+
+Every note gets two tags (grouped under `anki_cards` in the browser sidebar):
+
+- `anki_cards::id::<id>`: which card of the file it is
+- `anki_cards::h::<hash>`: a hash of the card's front, back, note type and
+  the contents of its audio files
+
+On each import:
+
+| File vs. Anki | Result |
+|---|---|
+| New id | Card added |
+| Same id, same hash | Nothing |
+| Same id, different hash | Fields and audio updated in place, study progress kept |
+| Id no longer in the file | Note deleted, with its study progress |
+
+Notes without an id tag (added by hand) are never touched. An empty `cards`
+array is rejected rather than emptying the deck; to delete a deck, delete it
+in Anki.
+
+A note type can't be changed in place: change it in Anki (*Notes → Change
+Note Type*) or rebuild with `--force`.
+
+### Audio files
+
+Each side with audio has its own file, named after the card's id, in a folder
+per deck (ids are only unique within a deck):
+
+```
+audio/Zwierzęta/cat_front.mp3
+audio/Zwierzęta/cat_back.mp3
+```
+
+In Anki's media folder, which all decks share, the file is called
+`Zwierzęta_cat_front.mp3`.
+
+- An existing file is used as it is, so you can put audio from anywhere else
+  under that name. Only missing files are generated.
+- Generated files are recorded in the deck folder's `.generated.json`, with
+  their text and voice. When a card's text or voice changes, its generated
+  file is made again. A file you put there yourself is never overwritten.
+- Replacing a file changes the card's hash, so the next import updates the
+  card.
+- Files of removed cards or renamed ids stay in the folder, and their copies
+  stay in Anki's media folder. *Tools → Check Media* in Anki deletes unused
+  media.
+
+Close the note in Anki's browser before importing: AnkiConnect can't update
+a note that is open there.
 
 ## Configuration
 
@@ -107,99 +163,38 @@ Settings are read from environment variables or a `.env` file.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INPUT_DIR` | `input` | Base input folder; each mode reads `INPUT_DIR/<mode>` |
 | `ANKI_URL` | `http://localhost:8765` | AnkiConnect address |
-| `VOCAB_NOTE_TYPE` | `Basic (and reversed card)` | Note type for `vocab`; use `Basic` for one-way cards |
-| `QA_NOTE_TYPE` | `Basic` | Note type for `qa` |
-| `SOURCE_LANG` | `pl` | Source language code |
-| `TARGET_LANG` | `ru` | Target language code (vocab) |
-| `TTS_VOICE` | `pl-PL-ZofiaNeural` | edge-tts voice (`edge-tts --list-voices`) |
-| `AUDIO_DIR` | `audio` | Where audio files are stored; existing `<text>.mp3` files are reused |
-| `TAGS` | `auto` | Comma-separated tags for every note |
-| `TRANSLATOR` | `google` | `google`, `mymemory` or `deepl` (vocab) |
-| `MYMEMORY_EMAIL` | | Optional email that raises MyMemory's daily quota |
-| `DEEPL_API_KEY` | | Required for `TRANSLATOR=deepl` |
-| `DEEPL_FREE` | `true` | Use DeepL's free API endpoint |
+| `INPUT_DIR` | `input` | Folder with the deck files |
+| `AUDIO_DIR` | `audio` | Audio files, as `<deck>/<id>_front.mp3` and `<id>_back.mp3` (see [Audio files](#audio-files)) |
+| `MYMEMORY_EMAIL` | | `draft`: optional email that raises MyMemory's daily quota |
 | `REQUEST_DELAY` | `0.7` | Seconds to pause between translation requests |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` |
 
-Note types need the fields `Front` and `Back`.
-
-For example, for Spanish → English:
-
-```
-SOURCE_LANG=es
-TARGET_LANG=en
-TTS_VOICE=es-ES-ElviraNeural
-```
+Note types, voices and languages are not configured here: deck files set them
+(see [Deck files](#deck-files)), and `draft` takes them as options.
 
 ## Project layout
 
 ```
 anki_cards/
-  cli.py          # argparse, one subcommand per mode
+  cli.py          # import / draft commands
   config.py       # Settings, read from .env
-  errors.py       # InputError / SkipEntry / ProviderError
-  pipeline.py     # files -> decks: existing decks, --force, duplicates, audio, stats
-  services/
+  deckfile.py     # deck file format: validation, setting overrides, hash
+  sync.py         # deck file -> Anki: add / update / delete
+  draft.py        # word list -> deck file
+  errors.py
+  services/       # reusable in other projects
     anki.py       # AnkiConnect client
-    tts.py        # edge-tts with an audio cache
-    translate.py  # Google / MyMemory / DeepL with retries
-  modes/
-    base.py       # Mode interface, Note and Audio
-    vocab.py
-    qa.py
+    tts.py        # edge-tts, audio/<deck>/<id>_<side>.mp3, language -> voice
+    translate.py  # MyMemory with retries
 ```
-
-### Adding a mode
-
-A mode only decides how to read a file and what a note looks like; the
-pipeline does the rest. Create `anki_cards/modes/<name>.py`:
-
-```python
-class MyMode(Mode):
-    name = "mine"                  # subcommand, and input folder input/mine
-    help = "what it does"
-    suffixes = (".json",)
-
-    @property
-    def note_type(self):
-        return "Basic"
-
-    def read(self, path):          # -> list of entries; raise InputError if unusable
-        ...
-
-    def key(self, entry):          # Front text, used to skip cards already in the deck
-        ...
-
-    def build(self, entry):        # -> Note; raise SkipEntry to leave this entry out
-        return Note(fields={"Front": ..., "Back": ...},
-                    audio=[Audio(text, "Front")])
-```
-
-Then add it to `MODES` in `anki_cards/modes/__init__.py`. Services such as
-`Translator` can be created in the mode's `__init__` if it needs them.
 
 ## Troubleshooting
 
-```bash
-python -m anki_cards vocab -v
-```
-
-Verbose mode logs every request with timings. If Google Translate blocks your
-network (an "unusual traffic" CAPTCHA page), the script detects it, logs the
-reply it got and stops instead of retrying. In that case set
-`TRANSLATOR=mymemory` or `TRANSLATOR=deepl` in `.env`.
-
-## Notes
-
-- Machine translation of single words can be wrong or ambiguous. Skim the
-  output, or supply your own translation after a tab. If a provider returns
-  the original text unchanged, no card is created for that entry.
-- Free translation services have limits: Google may block your IP, and
-  MyMemory has a small daily quota.
-- Changing a note type later does not convert existing cards; use
-  *Notes → Change Note Type* in Anki's browser.
+Run with `-v` to log every request with timings. MyMemory has a small free
+daily quota; when it is used up, `draft` stops after a few retries and
+writes nothing. Set `MYMEMORY_EMAIL` in `.env` for a larger quota, or run
+again later.
 
 ## License
 
