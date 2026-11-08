@@ -1,5 +1,6 @@
 """Machine translation with MyMemory, through deep-translator."""
 import logging
+import re
 import time
 
 from deep_translator import MyMemoryTranslator
@@ -10,6 +11,19 @@ from ..config import Settings
 from ..errors import ProviderError
 
 log = logging.getLogger(__name__)
+
+
+# Translation memories often store segments with trailing punctuation from
+# forms or calendars ("Monday:"). Drop such endings unless the original
+# has one too.
+TRAILING = re.compile(r"[\s:;,.]+$")
+
+
+def match_ending(original: str, translation: str) -> str:
+    """'Poniedziałek' + 'Monday:' -> 'Monday'."""
+    if TRAILING.search(original.rstrip()) or translation.rstrip().endswith("..."):
+        return translation
+    return TRAILING.sub("", translation) or translation
 
 
 def mymemory_code(lang: str) -> str:
@@ -47,7 +61,7 @@ class Translator:
         for attempt in range(1, retries + 1):
             start = time.monotonic()
             try:
-                result = self._fetch(text)
+                result = match_ending(text, self._fetch(text))
                 log.debug("translate: %r -> %r (%.2fs)", text, result,
                           time.monotonic() - start)
                 time.sleep(self.delay)

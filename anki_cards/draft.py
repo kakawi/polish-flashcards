@@ -4,8 +4,8 @@ follow a tab.
     dom
     Co jesz na śniadanie?<TAB>Jem jajka.
 
-becomes (with --translate ru)
-    {"id": "house", "front": "dom", "back": "дом"}
+becomes (with --translate en)
+    {"id": "house", "front": "dom", "back": "house"}
     {"id": "what-do-you-eat-for-breakfast", "front": "Co jesz na śniadanie?",
      "back": "Jem jajka."}
 

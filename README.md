@@ -127,7 +127,7 @@ See `input-examples/deck.json`.
 |---------|---|
 | `front_audio` | `"pl"` (language code: its default voice), `"pl-PL-MarekNeural"` (exact voice) or `null` (no audio) |
 | `back_audio` | Same |
-| `note_type` | Anki note type with `Front` and `Back` fields |
+| `note_type` | Anki note type with `Front` and `Back` fields (see [Note types](#note-types)) |
 
 Language codes use these voices: `pl` Zofia, `ru` Svetlana, `uk` Polina,
 `en` Aria (US), `de` Katja, `es` Elvira, `fr` Denise, `it` Elsa. For another
@@ -137,6 +137,29 @@ A key missing on a card inherits the deck setting; `null` turns it off for
 that card. The whole file is rejected, before anything reaches Anki, if it
 has a missing field, a duplicate or invalid id, or an unknown key (so a typo
 like `back_adio` doesn't silently drop audio).
+
+### Note types
+
+`note_type` is the name of a note type in your Anki collection. It must have
+fields called `Front` and `Back`; the cards are filled in through those two
+fields only. Anki's built-in note types that work:
+
+| `note_type` | Cards per note | Use for |
+|---|---|---|
+| `"Basic"` | 1: front → back | Questions and answers, anything one-way |
+| `"Basic (and reversed card)"` | 2: front → back and back → front | Vocabulary you want to recall in both directions |
+| `"Basic (type in the answer)"` | 1: front → back, you type the back | Practising spelling |
+| `"Basic (optional reversed card)"` | 1: front → back | Same as `Basic` here: its reverse card needs the `Add Reverse` field, which this tool doesn't fill |
+
+`Cloze` and `Image Occlusion` have different fields and don't work.
+
+- The name must match Anki exactly. If Anki runs in another language, the
+  built-in names are translated too; check *Tools → Manage Note Types*.
+- Your own note types work too, as long as they have `Front` and `Back`
+  fields. You can, for example, copy `Basic` there and change its card
+  layout.
+- With audio on the back of a `Basic (and reversed card)` note, the reversed
+  card plays it on its front.
 
 ### How sync works
 

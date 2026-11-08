@@ -3,7 +3,7 @@
     {
       "settings": {"front_audio": "pl", "back_audio": null, "note_type": "Basic"},
       "cards": [
-        {"id": "house", "front": "dom", "back": "дом"},
+        {"id": "house", "front": "dom", "back": "house"},
         {"id": "breakfast", "front": "Co jesz rano?", "back": "Jem jajka.",
          "back_audio": "pl"}
       ]
