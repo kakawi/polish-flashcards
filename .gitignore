@@ -25,3 +25,5 @@ input
 *.egg-info/
 build/
 dist/
+
+.envrc
