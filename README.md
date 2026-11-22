@@ -70,6 +70,7 @@ Co jesz na śniadanie?<TAB>Na śniadanie jem jajka.
 | `--front-audio AUDIO` | Written as `front_audio` in the deck's settings: a language code (`pl`) or a voice (`pl-PL-MarekNeural`). Default: no audio |
 | `--back-audio AUDIO` | The same for `back_audio` |
 | `--note-type` | Note type for the deck (default `Basic (and reversed card)`) |
+| `--swap` | Swap front and back after translating: the list's lines become the backs. `--lang` is still the language of the lines, and `--front-audio`/`--back-audio` apply to the swapped sides |
 
 `draft` doesn't make audio: the audio options only go into the file's
 `settings`, which you can still change before importing. `import` makes the
@@ -95,6 +96,9 @@ anki-cards draft words.txt --translate ru --front-audio pl --back-audio ru-RU-Dm
 
 # Polish questions and answers (backs after a tab), audio on both sides
 anki-cards draft qa.txt --front-audio pl --back-audio pl --note-type Basic
+
+# Polish phrases -> one card per note: Russian front, Polish back with Polish audio
+anki-cards draft phrases.txt --translate ru --swap --back-audio pl --note-type Basic
 
 # English fronts, translated to Polish
 anki-cards draft words.txt --lang en --translate pl --front-audio en

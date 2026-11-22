@@ -14,7 +14,9 @@ has none; otherwise they are left empty for you to fill in (import rejects
 empty backs). Ids are always English (the front translated to English), so
 they stay readable whatever the deck's languages are. --front-audio and
 --back-audio are written into the deck's settings as given; the audio itself
-is made by import.
+is made by import. With --swap, front and back are swapped after translating,
+so the list's lines become the backs (e.g. Russian prompt, Polish answer);
+the audio options apply to the swapped sides.
 """
 import json
 import logging
@@ -89,7 +91,7 @@ def check_audio(value, option: str):
 
 
 def draft(settings: Settings, src: Path, out: Path, lang: str, translate_to,
-          front_audio, back_audio, note_type: str):
+          front_audio, back_audio, note_type: str, swap: bool = False):
     check_audio(front_audio, "--front-audio")
     check_audio(back_audio, "--back-audio")
     lang = lang.lower()
@@ -132,14 +134,17 @@ def draft(settings: Settings, src: Path, out: Path, lang: str, translate_to,
         else:
             english = translate(to_english, front)
         card = {"id": unique(slug(english or front), taken),
-                "front": front, "back": back}
+                "front": back if swap else front,
+                "back": front if swap else back}
         if not back:
-            log.warning("- %s: no %s; fill in \"back\" before importing",
-                        front, "translation" if to_target else "back after a tab")
+            log.warning("- %s: no %s; fill in \"%s\" before importing",
+                        front, "translation" if to_target else "back after a tab",
+                        "front" if swap else "back")
         elif not own_back and back.casefold() == front.casefold():
             log.warning("- %s: translation is identical to the front; "
                         "check it", front)
-        log.info("[%d/%d] %s: %s -> %s", n, len(entries), card["id"], front, back)
+        log.info("[%d/%d] %s: %s -> %s", n, len(entries), card["id"],
+                 card["front"], card["back"])
         cards.append(card)
 
     deck_settings = {"front_audio": front_audio, "back_audio": back_audio,

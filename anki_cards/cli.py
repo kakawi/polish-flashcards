@@ -83,6 +83,10 @@ def parse_args(settings: Settings):
                    help="back audio setting, like --front-audio; default: none")
     d.add_argument("--note-type", default="Basic (and reversed card)",
                    help="note type for the deck (default: %(default)s)")
+    d.add_argument("--swap", action="store_true",
+                   help="swap front and back after translating: the list's "
+                        "lines become the backs; --front-audio/--back-audio "
+                        "apply to the swapped sides")
 
     for c in (s, d):
         c.add_argument("-v", "--verbose", action="store_true",
@@ -99,7 +103,7 @@ def main():
     if args.command == "draft":
         out = args.output or settings.input_dir / f"{args.src.stem}.json"
         draft(settings, args.src, out, args.lang, args.translate,
-              args.front_audio, args.back_audio, args.note_type)
+              args.front_audio, args.back_audio, args.note_type, args.swap)
         return
 
     files = find_input_files(args.input)
